@@ -19,8 +19,11 @@ Then simply run `./swaplistener` to start the listener.
 # filter results
 If you only want to listen to a subset of the pairs, add `-q` flags, e.g.,
 `./swaplistener -q MAGIK -q MIM:WINE`
-will only listen to pairs which have MAGIK as either pair, or are MIM:WINE.
+will only listen to pairs which have MAGIK as either element in the pair, or are MIM:WINE.
 
 # customizations
 
 The data stored in the ram.data file can be personalized. For instance, if you want to switch the "direction" of a pair, you can change the normal parameter to `false`
+
+# donations
+donations may be sent to `0x56bdB5d2bfC30b7dE56095936984c9ce4b5b85C7`
