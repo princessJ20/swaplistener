@@ -10,11 +10,9 @@ Run `go build .` in the main directory.
 If all goes well, this should produce the `swaplistener` executable file.
 
 # running the executable
-First you need to generate `ram.data` from the included bootstrap file `bootstrap.data`
+First you need to generate `ram.data` from the included bootstrap file `bootstrap.data`. The bootstrap file contains a collection of LP token addresses.
 
 `./swaplistener --bootstrap`
-or, more verbosely:
-`./swaplistener --bootstrap -in bootstrap.data -ram ram.data`
 
 Then simply run `./swaplistener` to start the listener. 
 
