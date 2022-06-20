@@ -26,7 +26,7 @@ will only listen to pairs which have MAGIK as either element in the pair, or are
 
 # customizations
 
-The data stored in the ram.data file can be personalized. For instance, if you want to switch the "direction" of a pair, you can change the normal parameter to `false`
+The data stored in the ram.data file can be personalized. For instance, if you want to switch the "direction" of a pair, you can change the `normal` parameter to `false`
 
 # donations
 donations may be sent to `0x56bdB5d2bfC30b7dE56095936984c9ce4b5b85C7`
