@@ -5,6 +5,9 @@ go program for listening to swaps on EVM chains
 
 the source code is `main.go`
 
+# prerequisites
+Need to have `go` installed. Follow the instructions at https://go.dev for your system. If you want to learn the `go` programming language, https://go.dev/tour/ is a good place to start.
+
 # building the executable
 Run `go build .` in the main directory. 
 If all goes well, this should produce the `swaplistener` executable file.
