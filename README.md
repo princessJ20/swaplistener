@@ -1,4 +1,4 @@
-# swap_listener
+# swaplistener
 go program for listening to swaps on EVM chains
 
 ![swap_listener](https://user-images.githubusercontent.com/107820179/174509833-d50f1680-9181-4169-b37a-08d3578e0a03.png)
