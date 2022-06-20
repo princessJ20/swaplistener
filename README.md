@@ -7,14 +7,14 @@ the source code is `main.go`
 
 # building the executable
 Run `go build .` in the main directory. 
-If all goes well, this should produce the `swap_listener` executable file.
+If all goes well, this should produce the `swaplistener` executable file.
 
 # running the executable
 First you need to generate `ram.data` from the included bootstrap file `bootstrap.data`
 
 `./swap_listener --bootstrap`
 
-Then simply run `./swap_listener` to start the listener. 
+Then simply run `./swaplistener` to start the listener. 
 
 # customizations
 

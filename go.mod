@@ -1,4 +1,4 @@
-module swap_listener
+module swaplistener
 
 go 1.17
 
