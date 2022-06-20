@@ -15,7 +15,7 @@ If all goes well, this should produce the `swaplistener` executable file.
 # running the executable
 First you need to generate `ram.data` from the included bootstrap file `bootstrap.data`. The bootstrap file contains a collection of LP token addresses. You can add pairs by adding the address of the LP token in the appropriate location in the bootstrap file (before running the bootstrap).
 
-Running the bootstrap: `./swaplistener --bootstrap`
+Running the bootstrap: `./swaplistener --bootstrap` (you only need to do this once)
 
 Then simply run `./swaplistener` to start the listener. 
 
