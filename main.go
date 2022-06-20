@@ -7,118 +7,159 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/fatih/color"
 	"io"
 	"log"
 	"math/big"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/fatih/color"
 )
-
-const ftm_url = "https://rpc.ftm.tools"
-const avax_url = "https://api.avax.network/ext/bc/C/rpc"
-
-const ftm_chain_id = int64(250)
-const avax_chain_id = int64(43114)
-
-const avax_wss = "wss://api.avax.network/ext/bc/C/ws"
-const ftm_wss = "wss://wsapi.fantom.network/"
 
 var bootstrapFlag = flag.Bool("bootstrap", false, "set this to fetch metadata using a bootstrap file")
 var generateBootstrapFlag = flag.Bool("gen_bootstrap", false, "set this to generate bootstrap.data using the current ram file")
+var ramFlag = flag.String("ram", "ram.data", "file name for ram")
+var bootstrapFileFlag = flag.String("in", "bootstrap.data", "file name for bootstrap")
+
+type queryArray []string
+
+func (q *queryArray) String() (str string) {
+	for _, val := range *q {
+		str += fmt.Sprintf(" %s", val)
+	}
+	return
+}
+func (q *queryArray) Set(value string) (err error) {
+	*q = append(*q, value)
+	return nil
+}
+
+var queryFlag queryArray
 
 func main() {
-	fmt.Println("dialing FTM and AVAX blockchains...")
+	flag.Var(&queryFlag, "q", "queries SYMBOL0:SYMBOL1")
 	flag.Parse()
-	avax_wss := avax_wss
-	ftm_wss := ftm_wss
 	var contract abi.ABI
-
 	contract, _ = abi.JSON(strings.NewReader(lp_abi))
-	avax_client, err := ethclient.Dial(avax_wss)
-	ftm_client, err := ethclient.Dial(ftm_wss)
-	if err != nil {
-		log.Fatal(err)
-	}
 	var ram map[common.Address]Pair
+	var header map[int64]interface{}
 	if *bootstrapFlag {
-		fmt.Print("Load addresses in bootstrap.data and fetch data? [press enter]")
+		fmt.Printf("Load addresses in %s and fetch data? [press enter]", *bootstrapFileFlag)
 		fmt.Scanln()
 		fmt.Print("Fetching data from blockchain...\n")
-		if tmp, err := load_bootstrap_file("bootstrap.data"); err == nil {
+		if tmph, tmp, err := load_bootstrap_file(*bootstrapFileFlag); err == nil {
 			ram = tmp
+			header = tmph
 		} else {
 			panic(err)
 		}
-		fmt.Print("Success! Overwrite ram.data with fetched data? [press enter]")
+		fmt.Printf("Success! Overwrite %s with fetched data? [press enter]", *ramFlag)
 		fmt.Scanln()
-		fmt.Print("Overwriting ram.data...\n")
-		if err := save_ram_to_ram_file(ram, "ram.data"); err == nil {
+		fmt.Printf("Overwriting %s...\n", *ramFlag)
+		if err := save_ram_to_ram_file(header, ram, *ramFlag); err == nil {
 			fmt.Println("Successs!")
 			os.Exit(0)
 		} else {
 			panic(err)
 		}
 	} else {
-		if tmp, err := load_ram_from_ram_file("ram.data"); err == nil {
+		if tmph, tmp, err := load_ram_from_ram_file(*ramFlag); err == nil {
 			ram = tmp
+			header = tmph
 			if *generateBootstrapFlag {
-				if err := save_bootstrap_file(ram, "bootstrap.data"); err == nil {
+				if err := save_bootstrap_file(header, ram, *bootstrapFileFlag); err == nil {
 				} else {
 					panic(err)
 				}
+				fmt.Printf("Successfully generated %s\n", *bootstrapFileFlag)
+				os.Exit(0)
 			}
 		} else {
-			fmt.Println("Make sure ram.data is in the current directory")
-			fmt.Println("Run with -bootstrap flag and bootstrap.data")
+			fmt.Printf("Make sure %s is in the current directory\n", *ramFlag)
+			fmt.Printf("Run with -bootstrap flag and %s\n", *bootstrapFileFlag)
 			panic(err)
 		}
 	}
-
-	var avax_addresses, ftm_addresses []common.Address
+	addresses := make(map[int64][]common.Address)
 	for key, val := range ram {
-		if val.Chain == avax_chain_id {
-			avax_addresses = append(avax_addresses, key)
-		} else {
-			ftm_addresses = append(ftm_addresses, key)
+		// filtering by query
+		if len(queryFlag) != 0 {
+			s0 := strings.ToLower(val.S0)
+			s1 := strings.ToLower(val.S1)
+			var b bool
+			for _, q := range queryFlag {
+				ss := strings.Split(q, ":")
+				switch len(ss) {
+				case 1:
+					a := strings.ToLower(ss[0])
+					b = b || strings.HasPrefix(s0, a) || strings.HasPrefix(s1, a)
+				case 2:
+					a0 := strings.ToLower(ss[0])
+					a1 := strings.ToLower(ss[1])
+					bt0 := strings.HasPrefix(s0, a0) && strings.HasPrefix(s1, a1)
+					bt1 := strings.HasPrefix(s1, a0) && strings.HasPrefix(s0, a1)
+					b = b || bt0 || bt1
+				}
+			}
+			if !b {
+				continue
+			}
 		}
+		a := addresses[val.Chain]
+		a = append(a, key)
+		addresses[val.Chain] = a
 	}
-
 	topics := contract.Events
 	id_swap := topics["Swap"].ID
 	id_mint := topics["Mint"].ID
 	id_burn := topics["Burn"].ID
-	avax_query := ethereum.FilterQuery{
-		Addresses: avax_addresses,
-		Topics:    [][]common.Hash{{id_swap, id_mint, id_burn}},
+	logs := make(chan types.Log)
+	errs := make(chan error)
+	var wg sync.WaitGroup
+	for key, val := range addresses {
+		head := header[key].(map[string]interface{})
+		query := ethereum.FilterQuery{
+			Addresses: val,
+			Topics:    [][]common.Hash{{id_swap, id_mint, id_burn}},
+		}
+		wg.Add(1)
+		go func() {
+			this_chain_logs := make(chan types.Log)
+			fmt.Printf("dialing %s blockchain...\n", head["name"].(string))
+			client, err := ethclient.Dial(head["wss"].(string))
+			if err != nil {
+				log.Fatal(err)
+			}
+			if tmp, err := client.SubscribeFilterLogs(context.Background(), query, this_chain_logs); err == nil {
+				wg.Done()
+				go func() {
+					for {
+						select {
+						case err := <-tmp.Err():
+							errs <- err
+						case log := <-this_chain_logs:
+							logs <- log
+						}
+					}
+				}()
+			}
+		}()
 	}
-	ftm_query := ethereum.FilterQuery{
-		Addresses: ftm_addresses,
-		Topics:    [][]common.Hash{{id_swap, id_mint, id_burn}},
-	}
-	avax_logs, ftm_logs := make(chan types.Log), make(chan types.Log)
-	avax_sub, err := avax_client.SubscribeFilterLogs(context.Background(), avax_query, avax_logs)
-	ftm_sub, err := ftm_client.SubscribeFilterLogs(context.Background(), ftm_query, ftm_logs)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("successfully initialized! listening on the blockchain for swap events...")
+	wg.Wait()
+	fmt.Println("successfully initialized! listening for swap events...")
 	for {
 		select {
-		case err := <-avax_sub.Err():
+		case err := <-errs:
 			log.Fatal(err)
-		case err := <-ftm_sub.Err():
-			log.Fatal(err)
-		case vLog := <-avax_logs:
-			vLog_handler(ram, contract, vLog)
-		case vLog := <-ftm_logs:
+		case vLog := <-logs:
 			vLog_handler(ram, contract, vLog)
 		}
 	}
@@ -319,23 +360,31 @@ func fetch_decimals(coin_addr string, dchan chan byte, url string) {
 	}
 }
 
-func load_ram_from_ram_file(filename string) (ram map[common.Address]Pair, err error) {
+func load_ram_from_ram_file(filename string) (header map[int64]interface{}, ram map[common.Address]Pair, err error) {
 	if f, ok := os.Open(filename); os.IsNotExist(ok) {
 		f.Close()
 		return
 	} else {
 		defer f.Close()
 		r := json.NewDecoder(f)
-		j := make(map[common.Address]Pair)
+		var j [2]interface{}
 		err = r.Decode(&j)
 		if err != nil {
 			return
 		}
-		ram = j
+		header = make(map[int64]interface{})
+		ram = make(map[common.Address]Pair)
+		b1, b2 := bytes.NewBuffer(nil), bytes.NewBuffer(nil)
+		t1, t2 := json.NewEncoder(b1), json.NewEncoder(b2)
+		t1.Encode(j[0])
+		t2.Encode(j[1])
+		s1, s2 := json.NewDecoder(b1), json.NewDecoder(b2)
+		s1.Decode(&header)
+		s2.Decode(&ram)
 	}
 	return
 }
-func save_ram_to_ram_file(ram map[common.Address]Pair, filename string) (err error) {
+func save_ram_to_ram_file(header map[int64]interface{}, ram map[common.Address]Pair, filename string) (err error) {
 	f, err := os.Create(filename)
 	defer f.Close()
 	if err != nil {
@@ -343,10 +392,10 @@ func save_ram_to_ram_file(ram map[common.Address]Pair, filename string) (err err
 	}
 	r := json.NewEncoder(f)
 	r.SetIndent("", "  ")
-	err = r.Encode(ram)
+	err = r.Encode([]interface{}{header, ram})
 	return
 }
-func save_bootstrap_file(ram map[common.Address]Pair, filename string) (err error) {
+func save_bootstrap_file(header map[int64]interface{}, ram map[common.Address]Pair, filename string) (err error) {
 	f, err := os.Create(filename)
 	defer f.Close()
 	if err != nil {
@@ -354,16 +403,29 @@ func save_bootstrap_file(ram map[common.Address]Pair, filename string) (err erro
 	}
 	r := json.NewEncoder(f)
 	r.SetIndent("", "  ")
-	bootstrap := make(map[int64][]string)
+	bootstrap := make(map[int64]interface{})
 	for key, val := range ram {
-		bootstrap[val.Chain] = append(bootstrap[val.Chain], key.String())
+		if try, ok := bootstrap[val.Chain].(map[string]interface{}); ok == false {
+			try = make(map[string]interface{})
+			head := header[val.Chain].(map[string]interface{})
+			try["name"] = head["name"].(string)
+			try["url"] = head["url"].(string)
+			try["wss"] = head["wss"].(string)
+			try["data"] = []string{key.String()}
+			bootstrap[val.Chain] = try
+		} else {
+			s := try["data"].([]string)
+			s = append(s, key.String())
+			try["data"] = s
+			bootstrap[val.Chain] = try
+		}
 	}
 	err = r.Encode(bootstrap)
 	return
 }
 
-func load_bootstrap_file(filename string) (ram map[common.Address]Pair, err error) {
-	bootstrap := make(map[int64][]string)
+func load_bootstrap_file(filename string) (ram_header map[int64]interface{}, ram map[common.Address]Pair, err error) {
+	bootstrap := make(map[int64]interface{})
 	if f, ok := os.Open(filename); ok != nil {
 		f.Close()
 		err = ok
@@ -371,7 +433,7 @@ func load_bootstrap_file(filename string) (ram map[common.Address]Pair, err erro
 	} else {
 		defer f.Close()
 		r := json.NewDecoder(f)
-		j := make(map[int64][]string)
+		j := make(map[int64]interface{})
 		err = r.Decode(&j)
 		if err != nil {
 			return
@@ -379,16 +441,22 @@ func load_bootstrap_file(filename string) (ram map[common.Address]Pair, err erro
 		bootstrap = j
 	}
 
+	ram_header = make(map[int64]interface{})
 	ram = make(map[common.Address]Pair)
 	for key, val := range bootstrap {
+		header := make(map[string]string)
+		var data []interface{}
 		var url string
-		switch key {
-		case ftm_chain_id:
-			url = ftm_url
-		case avax_chain_id:
-			url = avax_url
+		if try, ok := val.(map[string]interface{}); ok == true {
+			data = try["data"].([]interface{})
+			header["wss"] = try["wss"].(string)
+			url = try["url"].(string)
+			header["url"] = url
+			header["name"] = try["name"].(string)
 		}
-		for _, lpaddr := range val {
+		ram_header[key] = header
+		for _, lpaddr_i := range data {
+			lpaddr := lpaddr_i.(string)
 			t0c, t1c, s0c, s1c, d0c, d1c := make(chan string), make(chan string), make(chan string), make(chan string), make(chan byte), make(chan byte)
 			go fetch_tokens(lpaddr, t0c, t1c, url)
 			go fetch_symbol(<-t0c, s0c, url)
@@ -459,6 +527,7 @@ func make_json_request(myRequest json_request, url string) (rbody []byte, err er
 		return
 	}
 	rbody, err = io.ReadAll(response.Body)
+	// fmt.Printf("%s\n", rbody)
 	if err != nil {
 		return
 	}
