@@ -24,13 +24,15 @@ import (
 	"github.com/fatih/color"
 )
 
+// Command Line Flags.
 var bootstrapFlag = flag.Bool("bootstrap", false, "set this to fetch metadata using a bootstrap file")
 var generateBootstrapFlag = flag.Bool("gen_bootstrap", false, "set this to generate bootstrap.data using the current ram file")
 var ramFlag = flag.String("ram", "ram.data", "file name for ram")
 var bootstrapFileFlag = flag.String("in", "bootstrap.data", "file name for bootstrap")
 
-type queryArray []string
 
+// queryArray... an array of queries given by -q flags
+type queryArray []string
 func (q *queryArray) String() (str string) {
 	for _, val := range *q {
 		str += fmt.Sprintf(" %s", val)
@@ -41,9 +43,9 @@ func (q *queryArray) Set(value string) (err error) {
 	*q = append(*q, value)
 	return nil
 }
-
 var queryFlag queryArray
 
+// the main method. this is what is run when the program is executed.
 func main() {
 	flag.Var(&queryFlag, "q", "queries SYMBOL0:SYMBOL1")
 	flag.Parse()
@@ -165,6 +167,7 @@ func main() {
 	}
 }
 
+// handles an incoming event Log. 
 func vLog_handler(ram map[common.Address]Pair, contract abi.ABI, vLog types.Log) {
 	e, err := contract.EventByID(vLog.Topics[0])
 	if err != nil {
@@ -195,8 +198,9 @@ func vLog_handler(ram map[common.Address]Pair, contract abi.ABI, vLog types.Log)
 	c.Printf("%s | %s @ %s | %s\n", s, now.Format("15:04:05"), vLog.Address.String()[:6], fmt.Sprintf("%#x", vLog.TxHash)[:6])
 }
 
-// amt0 should be the stable pair
+// amt0 should be the "stable" half of the pair (depending on the context...)
 // amt0 amt1 will constantly be updated
+// B is the "normal" parameter which can be changed (change this in the ram file) to flip the "direction" of a pair. 
 type Pair struct {
 	S0    string `json:"symbol0"`
 	S1    string `json:"symbol1"`
@@ -210,6 +214,7 @@ type Pair struct {
 	mode byte
 }
 
+// uses the raw *big.Int data and generates *big.Float data, appropriately renormalized using the "decimal" data
 func (p *Pair) amts() (amt0f *big.Float, amt1f *big.Float, price *big.Float) {
 	exp0 := (&big.Float{}).SetInt((&big.Int{}).Exp(big.NewInt(10), big.NewInt(int64(p.D0)), nil))
 	exp1 := (&big.Float{}).SetInt((&big.Int{}).Exp(big.NewInt(10), big.NewInt(int64(p.D1)), nil))
@@ -228,6 +233,7 @@ func (p *Pair) amts() (amt0f *big.Float, amt1f *big.Float, price *big.Float) {
 	return
 }
 
+// prints a pair, returns the string and the color.
 func (p *Pair) String() (s string, c *color.Color) {
 	amt0f, amt1f, price := p.amts()
 	var t1, t2, t3 string
@@ -268,6 +274,7 @@ func (p *Pair) String() (s string, c *color.Color) {
 	return
 }
 
+// the following three functions update the pair variable "p" based on the data in the Log Event. Will switch the mode of p depending on the event.
 func (p *Pair) swapUpdate(f []interface{}) {
 	var ell [4]*big.Int
 	for i, k := range f {
@@ -304,6 +311,8 @@ func (p *Pair) burnUpdate(f []interface{}) {
 	p.mode = 3
 }
 
+
+// fetches the symbol data by querying blockchain... part of bootstrap
 func fetch_symbol(coin_addr string, schan chan string, url string) {
 	tmpabi, _ := abi.JSON(strings.NewReader(`[{"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"}]`))
 	packed_bytes_0, _ := tmpabi.Pack("symbol")
@@ -318,6 +327,8 @@ func fetch_symbol(coin_addr string, schan chan string, url string) {
 
 }
 
+
+// uses ethCall() to get the pair of tokens by querying the LP contract... part of bootstrap
 func fetch_tokens(lp_addr string, tok0c chan string, tok1c chan string, url string) {
 	tmpabi, _ := abi.JSON(strings.NewReader(`[{"inputs":[],"name":"token0","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"token1","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"}]`))
 	go func() {
@@ -347,6 +358,8 @@ func fetch_tokens(lp_addr string, tok0c chan string, tok1c chan string, url stri
 		}
 	}()
 }
+
+// uses ethCall() to get decimal information from blockchain... part of bootstrap
 func fetch_decimals(coin_addr string, dchan chan byte, url string) {
 	tmpabi, _ := abi.JSON(strings.NewReader(`[{"inputs":[],"name":"decimals","outputs":[{"internalType":"uint8","name":"","type":"uint8"}],"stateMutability":"view","type":"function"}]`))
 	packed_bytes_0, _ := tmpabi.Pack("decimals")
@@ -360,6 +373,7 @@ func fetch_decimals(coin_addr string, dchan chan byte, url string) {
 	}
 }
 
+// loads ram from ram file
 func load_ram_from_ram_file(filename string) (header map[int64]interface{}, ram map[common.Address]Pair, err error) {
 	if f, ok := os.Open(filename); os.IsNotExist(ok) {
 		f.Close()
@@ -384,6 +398,8 @@ func load_ram_from_ram_file(filename string) (header map[int64]interface{}, ram 
 	}
 	return
 }
+
+// saves ram to a ram file
 func save_ram_to_ram_file(header map[int64]interface{}, ram map[common.Address]Pair, filename string) (err error) {
 	f, err := os.Create(filename)
 	defer f.Close()
@@ -395,6 +411,8 @@ func save_ram_to_ram_file(header map[int64]interface{}, ram map[common.Address]P
 	err = r.Encode([]interface{}{header, ram})
 	return
 }
+
+// uses ram file to create a bootstrap file
 func save_bootstrap_file(header map[int64]interface{}, ram map[common.Address]Pair, filename string) (err error) {
 	f, err := os.Create(filename)
 	defer f.Close()
@@ -424,6 +442,7 @@ func save_bootstrap_file(header map[int64]interface{}, ram map[common.Address]Pa
 	return
 }
 
+// loads the bootstrap file by calling the blockchain to get the symbol and decimal metadata
 func load_bootstrap_file(filename string) (ram_header map[int64]interface{}, ram map[common.Address]Pair, err error) {
 	bootstrap := make(map[int64]interface{})
 	if f, ok := os.Open(filename); ok != nil {
@@ -476,6 +495,7 @@ func load_bootstrap_file(filename string) (ram_header map[int64]interface{}, ram
 	return
 }
 
+// ethCall is used to make a one-off json request to the blockchain
 func ethCall(url string, addr string, data string) (result_string string) {
 	result_string, _ = func() (str string, ok bool) {
 		var myRequest json_request
@@ -496,12 +516,12 @@ func ethCall(url string, addr string, data string) (result_string string) {
 	return
 }
 
+// auxiliary types used in ethCall()
 type json_response struct {
 	ID      int64       `json:"id"`
 	JSONRPC string      `json:"jsonrpc"`
 	Result  interface{} `json:"result"`
 }
-
 type json_request struct {
 	ID      int64       `json:"id"`
 	JSONRPC string      `json:"jsonrpc"`
@@ -509,8 +529,7 @@ type json_request struct {
 	Params  interface{} `json:"params"`
 }
 
-const goerli_url = "http://localhost:8545"
-
+// low level function for making json request
 func make_json_request(myRequest json_request, url string) (rbody []byte, err error) {
 	var client http.Client
 	body, err := json.Marshal(myRequest)
@@ -535,4 +554,5 @@ func make_json_request(myRequest json_request, url string) (rbody []byte, err er
 	return
 }
 
+// the ABI for standard LP contract
 const lp_abi = `[{"inputs":[],"payable":false,"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"address","name":"spender","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Approval","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"sender","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount0","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"amount1","type":"uint256"},{"indexed":true,"internalType":"address","name":"to","type":"address"}],"name":"Burn","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"sender","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount0","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"amount1","type":"uint256"}],"name":"Mint","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"sender","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount0In","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"amount1In","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"amount0Out","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"amount1Out","type":"uint256"},{"indexed":true,"internalType":"address","name":"to","type":"address"}],"name":"Swap","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint112","name":"reserve0","type":"uint112"},{"indexed":false,"internalType":"uint112","name":"reserve1","type":"uint112"}],"name":"Sync","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Transfer","type":"event"},{"constant":true,"inputs":[],"name":"DOMAIN_SEPARATOR","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"MINIMUM_LIQUIDITY","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"PERMIT_TYPEHASH","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[{"internalType":"address","name":"","type":"address"},{"internalType":"address","name":"","type":"address"}],"name":"allowance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"approve","outputs":[{"internalType":"bool","name":"","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"to","type":"address"}],"name":"burn","outputs":[{"internalType":"uint256","name":"amount0","type":"uint256"},{"internalType":"uint256","name":"amount1","type":"uint256"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"decimals","outputs":[{"internalType":"uint8","name":"","type":"uint8"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"factory","outputs":[{"internalType":"address","name":"","type":"address"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"getReserves","outputs":[{"internalType":"uint112","name":"_reserve0","type":"uint112"},{"internalType":"uint112","name":"_reserve1","type":"uint112"},{"internalType":"uint32","name":"_blockTimestampLast","type":"uint32"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"_token0","type":"address"},{"internalType":"address","name":"_token1","type":"address"}],"name":"initialize","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"kLast","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"to","type":"address"}],"name":"mint","outputs":[{"internalType":"uint256","name":"liquidity","type":"uint256"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"nonces","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"owner","type":"address"},{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"},{"internalType":"uint256","name":"deadline","type":"uint256"},{"internalType":"uint8","name":"v","type":"uint8"},{"internalType":"bytes32","name":"r","type":"bytes32"},{"internalType":"bytes32","name":"s","type":"bytes32"}],"name":"permit","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"price0CumulativeLast","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"price1CumulativeLast","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"to","type":"address"}],"name":"skim","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[{"internalType":"uint256","name":"amount0Out","type":"uint256"},{"internalType":"uint256","name":"amount1Out","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"swap","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[],"name":"sync","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"token0","outputs":[{"internalType":"address","name":"","type":"address"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"token1","outputs":[{"internalType":"address","name":"","type":"address"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"transfer","outputs":[{"internalType":"bool","name":"","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"transferFrom","outputs":[{"internalType":"bool","name":"","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"}]`
