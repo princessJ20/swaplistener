@@ -14,6 +14,7 @@ the source code is `main.go`
      29.8373 MIM      -> ->     28.7335 GRAPE   |    1.0384 | 23:21:33 @ 0xb382 | 0x9ebd
      29.7485 MIM      -> <-     28.7335 GRAPE   |    1.0353 | 23:21:33 @ 0xb382 | 0x9ebd
 ```
+The arrows signify whether something is _entering_ or _exiting_ the liquidity pool. Thus `-> <-` signifies _making_ liquidity, while `<- ->` signifies _breaking_ liquidity (and `-> ->` is just a regular swap). 
 
 # prerequisites
 Need to have `go` installed. Follow the instructions at https://go.dev for your system. If you want to learn the `go` programming language, https://go.dev/tour/ is a good place to start.
