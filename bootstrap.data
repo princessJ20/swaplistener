@@ -32,6 +32,6 @@
     ],
     "name": "BNB",
     "url": "https://bsc-dataseed.binance.org",
-    "wss": "wss://speedy-nodes-nyc.moralis.io/22c0fb7f732861895891434a/bsc/mainnet/ws"
+    "wss": ""
   }
 }

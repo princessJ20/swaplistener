@@ -141,24 +141,26 @@ func main() {
 		}
 		wg.Add(1)
 		go func() {
-			this_chain_logs := make(chan types.Log)
-			fmt.Printf("dialing %s blockchain...\n", head["name"].(string))
-			client, err := ethclient.Dial(head["wss"].(string))
-			if err != nil {
-				log.Fatal(err)
-			}
-			if tmp, err := client.SubscribeFilterLogs(context.Background(), query, this_chain_logs); err == nil {
-				wg.Done()
-				go func() {
-					for {
-						select {
-						case err := <-tmp.Err():
-							errs <- err
-						case log := <-this_chain_logs:
-							logs <- log
+			defer wg.Done()
+			if wss, ok := head["wss"].(string); wss != "" && ok == true {
+				this_chain_logs := make(chan types.Log)
+				fmt.Printf("dialing %s blockchain...\n", head["name"].(string))
+				client, err := ethclient.Dial(wss)
+				if err != nil {
+					log.Fatal(err)
+				}
+				if tmp, err := client.SubscribeFilterLogs(context.Background(), query, this_chain_logs); err == nil {
+					go func() {
+						for {
+							select {
+							case err := <-tmp.Err():
+								errs <- err
+							case log := <-this_chain_logs:
+								logs <- log
+							}
 						}
-					}
-				}()
+					}()
+				}
 			}
 		}()
 	}
