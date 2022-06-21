@@ -30,9 +30,9 @@ var generateBootstrapFlag = flag.Bool("gen_bootstrap", false, "set this to gener
 var ramFlag = flag.String("ram", "ram.data", "file name for ram")
 var bootstrapFileFlag = flag.String("in", "bootstrap.data", "file name for bootstrap")
 
-
 // queryArray... an array of queries given by -q flags
 type queryArray []string
+
 func (q *queryArray) String() (str string) {
 	for _, val := range *q {
 		str += fmt.Sprintf(" %s", val)
@@ -43,6 +43,7 @@ func (q *queryArray) Set(value string) (err error) {
 	*q = append(*q, value)
 	return nil
 }
+
 var queryFlag queryArray
 
 // the main method. this is what is run when the program is executed.
@@ -90,34 +91,40 @@ func main() {
 			panic(err)
 		}
 	}
+	var d int
 	addresses := make(map[int64][]common.Address)
 	for key, val := range ram {
 		// filtering by query
-		if len(queryFlag) != 0 {
-			s0 := strings.ToLower(val.S0)
-			s1 := strings.ToLower(val.S1)
-			var b bool
-			for _, q := range queryFlag {
-				ss := strings.Split(q, ":")
-				switch len(ss) {
-				case 1:
-					a := strings.ToLower(ss[0])
-					b = b || strings.HasPrefix(s0, a) || strings.HasPrefix(s1, a)
-				case 2:
-					a0 := strings.ToLower(ss[0])
-					a1 := strings.ToLower(ss[1])
-					bt0 := strings.HasPrefix(s0, a0) && strings.HasPrefix(s1, a1)
-					bt1 := strings.HasPrefix(s1, a0) && strings.HasPrefix(s0, a1)
-					b = b || bt0 || bt1
-				}
-			}
-			if !b {
-				continue
+		s0 := strings.ToLower(val.S0)
+		s1 := strings.ToLower(val.S1)
+		var b bool
+		for _, q := range queryFlag {
+			ss := strings.Split(q, ":")
+			switch len(ss) {
+			case 1:
+				a := strings.ToLower(ss[0])
+				b = b || strings.HasPrefix(s0, a) || strings.HasPrefix(s1, a)
+			case 2:
+				a0 := strings.ToLower(ss[0])
+				a1 := strings.ToLower(ss[1])
+				bt0 := strings.HasPrefix(s0, a0) && strings.HasPrefix(s1, a1)
+				bt1 := strings.HasPrefix(s1, a0) && strings.HasPrefix(s0, a1)
+				b = b || bt0 || bt1
 			}
 		}
-		a := addresses[val.Chain]
-		a = append(a, key)
-		addresses[val.Chain] = a
+		if !b && len(queryFlag) > 0 {
+			continue
+		} else {
+			if d < len(s0) {
+				d = len(s0)
+			}
+			if d < len(s1) {
+				d = len(s1)
+			}
+			a := addresses[val.Chain]
+			a = append(a, key)
+			addresses[val.Chain] = a
+		}
 	}
 	topics := contract.Events
 	id_swap := topics["Swap"].ID
@@ -162,13 +169,12 @@ func main() {
 		case err := <-errs:
 			log.Fatal(err)
 		case vLog := <-logs:
-			vLog_handler(ram, contract, vLog)
+			vLog_handler(ram, contract, vLog, d)
 		}
 	}
 }
 
-// handles an incoming event Log. 
-func vLog_handler(ram map[common.Address]Pair, contract abi.ABI, vLog types.Log) {
+func vLog_handler(ram map[common.Address]Pair, contract abi.ABI, vLog types.Log, d int) {
 	e, err := contract.EventByID(vLog.Topics[0])
 	if err != nil {
 		panic(err)
@@ -180,17 +186,17 @@ func vLog_handler(ram map[common.Address]Pair, contract abi.ABI, vLog types.Log)
 	case "Swap":
 		if f, err := contract.Unpack("Swap", vLog.Data); err == nil {
 			p.swapUpdate(f)
-			s, c = p.String()
+			s, c = p.String(d)
 		}
 	case "Mint":
 		if f, err := contract.Unpack("Mint", vLog.Data); err == nil {
 			p.mintUpdate(f)
-			s, c = p.String()
+			s, c = p.String(d)
 		}
 	case "Burn":
 		if f, err := contract.Unpack("Burn", vLog.Data); err == nil {
 			p.burnUpdate(f)
-			s, c = p.String()
+			s, c = p.String(d)
 		}
 	}
 	loc, _ := time.LoadLocation("America/New_York")
@@ -200,7 +206,7 @@ func vLog_handler(ram map[common.Address]Pair, contract abi.ABI, vLog types.Log)
 
 // amt0 should be the "stable" half of the pair (depending on the context...)
 // amt0 amt1 will constantly be updated
-// B is the "normal" parameter which can be changed (change this in the ram file) to flip the "direction" of a pair. 
+// B is the "normal" parameter which can be changed (change this in the ram file) to flip the "direction" of a pair.
 type Pair struct {
 	S0    string `json:"symbol0"`
 	S1    string `json:"symbol1"`
@@ -234,7 +240,7 @@ func (p *Pair) amts() (amt0f *big.Float, amt1f *big.Float, price *big.Float) {
 }
 
 // prints a pair, returns the string and the color.
-func (p *Pair) String() (s string, c *color.Color) {
+func (p *Pair) String(d int) (s string, c *color.Color) {
 	amt0f, amt1f, price := p.amts()
 	var t1, t2, t3 string
 	my_red := color.New(color.FgHiRed)
@@ -244,16 +250,16 @@ func (p *Pair) String() (s string, c *color.Color) {
 
 	switch {
 	case p.mode == 0:
-		t1 = fmt.Sprintf("%12.4f %-7s  ->", amt0f, p.S0)
-		t2 = fmt.Sprintf("->%12.4f %-7s", amt1f, p.S1)
+		t1 = fmt.Sprintf("%12.4f %-*s  ->", amt0f, d+1, p.S0)
+		t2 = fmt.Sprintf("->%12.4f %-*s", amt1f, d, p.S1)
 		if p.B == true {
 			c = my_green
 		} else {
 			c = my_red
 		}
 	case p.mode == 1:
-		t1 = fmt.Sprintf("%12.4f %-7s  ->", amt1f, p.S1)
-		t2 = fmt.Sprintf("->%12.4f %-7s", amt0f, p.S0)
+		t1 = fmt.Sprintf("%12.4f %-*s  ->", amt1f, d+1, p.S1)
+		t2 = fmt.Sprintf("->%12.4f %-*s", amt0f, d, p.S0)
 		c = my_red
 		if p.B == true {
 			c = my_red
@@ -261,12 +267,12 @@ func (p *Pair) String() (s string, c *color.Color) {
 			c = my_green
 		}
 	case p.mode == 2:
-		t1 = fmt.Sprintf("%12.4f %-7s  ->", amt0f, p.S0)
-		t2 = fmt.Sprintf("<-%12.4f %-7s", amt1f, p.S1)
+		t1 = fmt.Sprintf("%12.4f %-*s  ->", amt0f, d+1, p.S0)
+		t2 = fmt.Sprintf("<-%12.4f %-*s", amt1f, d, p.S1)
 		c = my_cyan
 	case p.mode == 3:
-		t1 = fmt.Sprintf("%12.4f %-7s  <-", amt0f, p.S0)
-		t2 = fmt.Sprintf("->%12.4f %-7s", amt1f, p.S1)
+		t1 = fmt.Sprintf("%12.4f %-*s  <-", amt0f, d+1, p.S0)
+		t2 = fmt.Sprintf("->%12.4f %-*s", amt1f, d, p.S1)
 		c = my_yellow
 	}
 	t3 = fmt.Sprintf("%9.4f", price)
@@ -311,7 +317,6 @@ func (p *Pair) burnUpdate(f []interface{}) {
 	p.mode = 3
 }
 
-
 // fetches the symbol data by querying blockchain... part of bootstrap
 func fetch_symbol(coin_addr string, schan chan string, url string) {
 	tmpabi, _ := abi.JSON(strings.NewReader(`[{"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"}]`))
@@ -326,7 +331,6 @@ func fetch_symbol(coin_addr string, schan chan string, url string) {
 	}
 
 }
-
 
 // uses ethCall() to get the pair of tokens by querying the LP contract... part of bootstrap
 func fetch_tokens(lp_addr string, tok0c chan string, tok1c chan string, url string) {

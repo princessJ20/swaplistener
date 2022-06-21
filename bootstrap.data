@@ -28,8 +28,7 @@
   },
   "56": {
     "data": [
-      "0x57423151Ad2AAFA5378afbA274D30f5fab0d69Df",
-      "0x3Cd3E322f0112a296192E3Dc2742E96D5107DcF8"
+      "0x57423151Ad2AAFA5378afbA274D30f5fab0d69Df"
     ],
     "name": "BNB",
     "url": "https://bsc-dataseed.binance.org",
