@@ -5,6 +5,16 @@ go program for listening to swaps on EVM chains
 
 the source code is `main.go`
 
+# output fields
+```
+      incoming                   outgoing          price        time     LP id    TX id
+      0.0149 WINE     -> ->      2.8130 MIM     |  188.5075 | 23:21:33 @ 0x00cB | 0x9ebd
+      0.1583 WINE     -> ->     29.8447 MIM     |  188.4817 | 23:21:33 @ 0x00cB | 0x9ebd
+      0.1583 WINE     -> ->     29.8373 MIM     |  188.4345 | 23:21:33 @ 0x00cB | 0x9ebd
+     29.8373 MIM      -> ->     28.7335 GRAPE   |    1.0384 | 23:21:33 @ 0xb382 | 0x9ebd
+     29.7485 MIM      -> <-     28.7335 GRAPE   |    1.0353 | 23:21:33 @ 0xb382 | 0x9ebd
+```
+
 # prerequisites
 Need to have `go` installed. Follow the instructions at https://go.dev for your system. If you want to learn the `go` programming language, https://go.dev/tour/ is a good place to start.
 
