@@ -1,9 +1,9 @@
 # swaplistener
 go program for listening to swaps on EVM chains
 
-![demo1](https://user-images.githubusercontent.com/107820179/174716200-932c26c7-6464-4b4a-9c77-fa6d8f36fd76.png)
+![demo1](https://user-images.githubusercontent.com/107820179/174716296-5dfd422d-4eb3-4ac3-87e8-649de1133fc0.png)
 
-the source code is `main.go`
+the source code is all contained in the single file `main.go`
 
 # output fields
 ```
