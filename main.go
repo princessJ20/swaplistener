@@ -32,7 +32,6 @@ var bootstrapFileFlag = flag.String("in", "bootstrap.data", "file name for boots
 
 // queryArray... an array of queries given by -q flags
 type queryArray []string
-
 func (q *queryArray) String() (str string) {
 	for _, val := range *q {
 		str += fmt.Sprintf(" %s", val)
@@ -43,7 +42,6 @@ func (q *queryArray) Set(value string) (err error) {
 	*q = append(*q, value)
 	return nil
 }
-
 var queryFlag queryArray
 
 // the main method. this is what is run when the program is executed.
